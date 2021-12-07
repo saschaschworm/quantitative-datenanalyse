@@ -1,0 +1,285 @@
+---
+title: "Weihnachtsexperiment"
+description: |
+  Im Rahmen einer Prüfungsleistung im Modul Wissenschaftliche Methodik an der FOM Hochschule betrachtet das Weihnachsexperiment in Anlehnung an @Flynn2009 die asymmetrische Auffassung über den Zusammenhang von Geschenkpreisen und Gefühlen der Dankbarkeit oder Wertschätzung.
+author:
+  - name: "Sascha Schworm"
+    url: https://www.saschaschworm.de
+    affiliation: Bergische Universität Wuppertal
+    affiliation_url: https://www.uni-wuppertal.de
+date: December 7, 2021
+citation_url: https://github.com/saschaschworm/quantitative-datenanalyse
+bibliography: bibliography.bib
+link-citations: true
+lang: de
+site: distill::distill_website
+---
+
+```{r initialization, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(gtsummary)
+library(hrbrthemes)
+library(scales)
+library(mosaic)
+```
+
+```{r data-import-and-wrangling}
+load("datasets/christmas.RData")
+
+taker.data = taker.data %>%
+  rename(price = "Was glauben Sie, wie viel das Geschenk gekostet hat?") %>%
+  rename(appreciation = "Inwieweit haben Sie das Geschenk wertgeschätzt?") %>%
+  rename(grateful = "Inwieweit waren Sie dankbar für das Geschenk?") %>%
+  mutate(role = "Geschenknehmer")
+
+giver.data = giver.data %>%
+  rename(price = "Wie viel Geld haben Sie für das Geschenk ausgegeben?") %>%
+  rename(appreciation= "Inwieweit glauben Sie, hat die Person das Geschenk wertgeschätzt?") %>%
+  rename(grateful = "Inwieweit glauben Sie, war die Person dankbar für das Geschenk?") %>%
+  mutate(role = "Geschenkgeber")
+
+data = taker.data %>% 
+  bind_rows(giver.data) %>%
+  rename(timestamp = "Zeitstempel") %>%
+  rename(im1 = "Ich habe schon mal zu viel Wechselgeld zurückbekommen und nichts gesagt.") %>%
+  rename(im2 = "Ich bin immer ehrlich zu anderen.") %>%
+  rename(im3 = "Ich habe gelegentlich mal jemanden ausgenutzt.") %>%
+  rename(age = "Wie alt sind Sie?") %>%
+  rename(gender = "Was ist Ihr Geschlecht?") %>%
+  mutate(im2 = 8 - im2) %>%
+  mutate(ap = rowMeans(across(c(appreciation, grateful)))) %>%
+  mutate(im = rowMeans(across(c(im1, im3, im3)))) %>%
+  select(c(timestamp, price, age, gender, ap, im, role)) %>%
+  mutate(cooksd = cooks.distance(lm(ap ~ price + role + price:role + im))) %>%
+  mutate(influential = case_when(cooksd > 4 * mean(cooksd) ~ TRUE, TRUE ~ FALSE))
+```
+
+## Explorative Datenanalyse
+
+### Ausreißeranalyse
+
+Die Cook'sche Distanz $D_i$ von @Cook1982 wird im Rahmen der Regressionsanalyse verwendet, um einflussreiche Beobachtungen mit großen Residuen und/oder großen Hebelwerten zu identifizieren, die das Ergebnis und die Präzision einer Regression negativ beeinflussen könnten. Für die Interpretation der Cook'schen Distanz existieren unterschiedliche Ansätze: Nach @Cook1982 gelten Beobachtungen mit $D_i > 1$ als einflussreiche Beobachtungen, wohingegen für @Hardin2007 jene Beobachtungen mit $D_i > \frac{4}{n}$ als einflussreiche Beobachtungen gelten.
+
+```{r outliers, fig.align = "center", fig.cap = "Cook'sche Distanze über alle Beobachtungen."}
+data %>%
+  mutate(influential = case_when(influential == 1 ~ "JA", TRUE ~ "NEIN")) %>% 
+  ggplot(aes(y = cooksd, x = seq(1, nrow(data)), color = influential)) +
+  geom_point() +
+  geom_hline(aes(yintercept = 4 * mean(cooksd)), linetype = "dashed") +
+  labs(x = "Beobachtung", y = "Cook'sche Distanz", color = "Einflussreiche Beobachtung", caption = str_interp("N=${n}", list(n = nrow(data)))) +
+  theme_ipsum_rc(plot_margin = margin(0, 0, 0, 0)) +
+  theme(legend.position = "bottom") 
+```
+
+Die Anwendung einer anderen Daumenregel findet sich in Abbildung \@ref(fig:outliers). Dort sind all jene Beobachtungen als einflussreiche Beobachtungen markiert, deren Cook'sche Distanz die vierfache durchschnittliche Cook'sche Distanz aller Beobachtungen überschreitet. In der weiteren Analyse werden diese Beobachtungen nicht weiter betrachtet.
+
+## Regressionsanalyse
+
+```{r regression-models}
+model.baseline = lm(ap ~ price, data = data %>% filter(influential == FALSE))
+model.role = lm(ap ~ price + role, data = data %>% filter(influential == FALSE))
+model.interaction = lm(ap ~ price + role + price:role, data = data %>% filter(influential == FALSE))
+model.full = lm(ap ~ price + role + price:role + im, data = data %>% filter(influential == FALSE))
+```
+
+In Anlehnung an die zweite Studie von @Flynn2009, wird das vollständige Regressionsmodell wie folgt spezifiziert:
+
+$$\begin{equation}\text{W} = \beta_0 + \beta_1 \times \text{P} + \beta_2 \times \text{R} + \beta_3 \times \text{P} \times \text{R},
+(\#eq:model-specification)\end{equation}$$
+
+wobei $\text{W}$ den Wertschätzungsgrad, $\text{P}$ den Geschenkpreis und $\text{R}$ die Rolle bezeichnen. Hierbei ist immer dann $\text{R} = 1$, wenn ein Geschenknehmer betrachtet wird, andernfalls ist $\text{R} = 0$. Im Folgenden sollen die mittels der Methode der kleinsten Quadrate geschätzten Regressionsparameter interpretiert werden und zwar für unterschiedlich spezifizierte kleinere Teilmodelle bis hin zu dem in Formel \@ref(eq:model-specification) dargestellten vollständigen Modell. Damit soll verdeutlicht werden, wie sich die Interpretation der geschätzten Regressionsparameter verändern kann, wenn weitere Variablen sukzessive hinzugenommen werden.
+
+### Interpretation der Ergebnise
+
+#### Teilmodell 1: Wertschätzung auf Preis
+
+In diesem ersten Teilmodell wird der Wertschätzungsgrad $\text{W}$ ausschließlich auf den Geschenkpreis $\text{P}$ regressiert. Demnach ergibt sich die in Formel \@ref(eq:model-1) dargestellte Regressionsgleichung.
+
+$$
+\begin{equation}
+\widehat{\text{W}} = \overbrace{`r format(model.baseline$coef["(Intercept)"], scientific = F, digits = 5)`}^{\hat{\beta}_0} + \overbrace{`r format(model.baseline$coef["price"], scientific = F, digits = 1)`}^{\hat{\beta}_1} \times \text{P}
+(\#eq:model-1)\end{equation}
+$$
+
+Hierbei wird keinerlei Fallunterscheidung zwischen Geschenkgebern und Geschenkgebern getroffen. Die Regressionskonstante $\hat{\beta}_0$ besagt, dass der durchschnittliche Wertschätzungsgrad unabhängig des Preises (also für $\text{P} = 0$) bei etwa `r round(model.baseline$coef["(Intercept)"], 4)` Punkten liegt. Der Regressionsparameter $\hat{\beta}_1$ drückt den Einfluss des Geschenkpreises auf den Wertschätzungsgrad aus, der in diesem Fall positiv ist. Steigt der Geschenkpreis um 1 EUR, steigt der Wertschätzungsgrad im Schnitt um `r format(model.baseline$coef["price"], scientific = F, digits = 1)` Punkte.
+
+#### Teilmodell 2: Wertschätzung auf Preis und Rolle
+
+Das zweite Teilmodell regressiert nun den Wertschätzungsgrad $\text{W}$ noch zusätzlich auf die Rolle $\text{R}$, wodurch sich die in Formel \@ref(eq:model-2) dargestellte Regressionsgleichung ergibt.
+
+$$
+\begin{equation}
+\widehat{\text{W}} = \overbrace{`r format(model.role$coef["(Intercept)"], scientific = F, digits = 5)`}^{\hat{\beta}_0} + \overbrace{`r format(model.role$coef["price"], scientific = F, digits = 1)`}^{\hat{\beta}_1} \times \text{P} + \overbrace{`r format(model.role$coef["roleGeschenknehmer"], scientific = F, digits = 4)`}^{\hat{\beta}_2} \times \text{R}
+(\#eq:model-2)\end{equation}
+$$
+
+Was den Regressionsparameter $\hat{\beta}_1$ betrifft, gibt es hinsichtlich der Interpretation keinen Unterschied zum Vorgängermodell. Nur die Stärke des Einflusses ist weniger geworden. Wichtig ist jedoch, dass hinsichtlich dieses Einflusses nach wie vor keine Fallunterscheidung zwischen Geschenkgebern und Geschenknehmern gemacht wird. Die Annahme ist also, dass dieser für beide Gruppen gleich ist. In Bezug auf die Regressionskonstante $\hat{\beta}_0$ gibt es jedoch einen bedeutsamen Unterschied. Diese besagt nämlich nun, dass der durchschnittliche Wertschätzungsgrad unabhängig des Preises (also für $\text{P} = 0$) nur für die Gruppe der Geschenkgeber bei etwa `r round(model.role$coef["(Intercept)"], 4)` Punkten liegt, denn:
+
+$$
+\begin{equation}
+\widehat{\text{W}} = `r format(model.role$coef["(Intercept)"], scientific = F, digits = 5)` + (`r format(model.role$coef["price"], scientific = F, digits = 1)` \times 0) + `r format(model.role$coef["roleGeschenknehmer"], scientific = F, digits = 4)` \times 0 = `r format(model.role$coef["(Intercept)"], scientific = F, digits = 5)`.
+(\#eq:model-2-1)\end{equation}
+$$
+
+Der durschnittliche Wertschätzungsgrad in der Gruppe der Geschenknehmer hingegen liegt bei `r format(model.role$coef["(Intercept)"] + model.role$coef["roleGeschenknehmer"], scientific = F, digits = 5)` Punkten, denn
+
+$$
+\begin{equation}
+\widehat{\text{W}} = `r format(model.role$coef["(Intercept)"], scientific = F, digits = 5)` + (`r format(model.role$coef["price"], scientific = F, digits = 1)` \times 0) + `r format(model.role$coef["roleGeschenknehmer"], scientific = F, digits = 4)` \times 1 = `r format(model.role$coef["(Intercept)"] + model.role$coef["roleGeschenknehmer"], scientific = F, digits = 5)`.
+(\#eq:model-2-2)\end{equation}
+$$
+
+Der Regressionsparameter $\hat{\beta}_2$ zeigt hier also die Veränderung des durchschnittlichen Wertschätzungsgrads von Geschenknehmern im Vergleich zur Gruppe der Geschenkgeber an. Dieser ist bei Geschenknehmern im Schnitt um `r format(model.role$coef["roleGeschenknehmer"], scientific = F, digits = 4)` Punkte höher als bei den Geschenkgebern.
+
+#### Vollständiges Modell: Wertschätzung auf Preis, Rolle und Interaktion
+
+Das dritte und letzte und somit nun vollständige Modell regressiert den Wertschätzungsgrad $\text{W}$  noch zusätzlich auf die Interaktion - also auf die Wechselwirkung zwischen Geschenkpreis $\text{P}$ und Rolle $\text{R}$, wodurch sich die in Formel \@ref(eq:model-3) dargestellte Regressionsgleichung ergibt.
+
+$$
+\begin{equation}
+\widehat{\text{W}} = \overbrace{`r format(model.interaction$coef["(Intercept)"], scientific = F, digits = 5)`}^{\hat{\beta}_0} + \overbrace{`r format(model.interaction$coef["price"], scientific = F, digits = 1)`}^{\hat{\beta}_1} \times \text{P} + \overbrace{`r format(model.interaction$coef["roleGeschenknehmer"], scientific = F, digits = 3)`}^{\hat{\beta}_2} \times \text{R} - \overbrace{`r format(abs(model.interaction$coef["price:roleGeschenknehmer"]), scientific = F, digits = 1)`}^{\hat{\beta}_3} \times \text{P} \times \text{R}
+(\#eq:model-3)\end{equation}
+$$
+
+Die Interpretation der Regressionsparameter $\hat{\beta}_0$ und $\hat{\beta}_2$ ist hier genauso vorzunehmen wie im Vorgängermodell. Anders ist jetzt aber der Regressionsparameter $\hat{\beta}_1$ zu interpretieren. Dieser besagt nämlich nun, dass nur für die Gruppe der Geschenkgeber der Wertschätzungsgrad durchschnittlich um `r format(model.interaction$coef["price"], scientific = F, digits = 1)` Punkte steigt, wenn der Geschenkpreis um 1 EUR steigt, denn
+
+$$
+\begin{align}
+\widehat{\text{W}} &= `r format(model.interaction$coef["(Intercept)"], scientific = F, digits = 5)` + `r format(model.interaction$coef["price"], scientific = F, digits = 1)` \times \text{P} + `r format(model.interaction$coef["roleGeschenknehmer"], scientific = F, digits = 3)` \times 0 - `r format(abs(model.interaction$coef["price:roleGeschenknehmer"]), scientific = F, digits = 1)` \times \text{P} \times 0 \\
+&= `r format(model.interaction$coef["(Intercept)"], scientific = F, digits = 5)` + `r format(model.interaction$coef["price"], scientific = F, digits = 1)` \times \text{P}.
+(\#eq:model-3-1)\end{align}
+$$
+
+Bei der Gruppe der Geschenknehmer steigt der Wertschätzungsgrad dagegen nur um `r round(model.interaction$coef["price"], 3) + round(model.interaction$coef["price:roleGeschenknehmer"], 3)` Punkte, wenn der Geschenkpreis um 1 EUR steigt, denn
+
+$$
+\begin{align}
+\widehat{\text{W}} &= `r format(model.interaction$coef["(Intercept)"], scientific = F, digits = 5)` + `r format(model.interaction$coef["price"], scientific = F, digits = 1)` \times \text{P} + `r format(model.interaction$coef["roleGeschenknehmer"], scientific = F, digits = 3)` \times 1 - `r format(abs(model.interaction$coef["price:roleGeschenknehmer"]), scientific = F, digits = 1)` \times \text{P} \times 1 \\
+&= `r round(model.interaction$coef["(Intercept)"], 3) + round(model.interaction$coef["roleGeschenknehmer"], 3)` + `r round(model.interaction$coef["price"], 3) + round(model.interaction$coef["price:roleGeschenknehmer"], 3)` \times \text{P}.
+(\#eq:model-3-2)\end{align}
+$$
+
+Der Regressionsparameter $\hat{\beta}_3$ zeigt hier an, wie sich in der Gruppe der Geschenknehmer der Einfluss des Geschenkpreises auf den Wertschätzungsgrad im Vergleich zur Gruppe der Geschenkgeber im Schnitt verändert. Dieser Einfluss verändert sich bei Geschenknehmern nämlich im Schnitt um `r format(model.interaction$coef["price:roleGeschenknehmer"], scientific = F, digits = 1)` Punkte und fällt somit geringer aus als in der Gruppe der Geschenkgeber.
+
+### Grafische Darstellung
+
+Die beiden Teilmodelle sowie das vollständige Modell sind zur Verdeutlichung in Abbildung \@ref(fig:regression-plots) einmal grafisch dargestellt.
+
+```{r regression-plots, fig.align = "center", fig.cap = "Darstellung der beiden Teilmodelle sowie des vollständigen Regressionsmodells."}
+data.prediction = predict(model.baseline, data.frame(price = c(0, 1400), role = c(NA, NA))) %>%
+  as_tibble() %>%
+  bind_cols(data.frame(price = c(0, 1400), role = c(NA, NA))) %>%
+  mutate(model = "Modell 1") %>%
+  bind_rows(
+    predict(model.role, data.frame(price = c(0, 1400, 0, 1400), role = c(rep("Geschenkgeber", 2), rep("Geschenknehmer", 2)))) %>%
+    as_tibble() %>%
+    bind_cols(data.frame(price = c(0, 1400, 0, 1400), role = c(rep("Geschenkgeber", 2), rep("Geschenknehmer", 2)))) %>%
+    mutate(model = "Modell 2")
+  ) %>%
+  bind_rows(
+   predict(model.interaction, data.frame(price = c(0, 1400, 0, 1400), role = c(rep("Geschenkgeber", 2), rep("Geschenknehmer", 2)))) %>%
+    as_tibble() %>%
+    bind_cols(data.frame(price = c(0, 1400, 0, 1400), role = c(rep("Geschenkgeber", 2), rep("Geschenknehmer", 2)))) %>%
+    mutate(model = "Modell 3") 
+  )
+
+ggplot() +
+  geom_jitter(data = data, aes(x = price, y = ap, color = role), alpha = 0.2) +
+  geom_line(data = data.prediction, aes(x = price, y = value, color = role)) +
+  facet_wrap(~ model) +
+  labs(x = "Geschenkpreis", y = "Wertschätzungsgrad", color = "Rolle") +
+  theme_ipsum_rc(plot_margin = margin(0, 0, 0, 0)) +
+  theme(legend.position = "bottom") 
+```
+
+## Hypothesentests
+
+```{r bootstrap, cache = TRUE}
+set.seed(1909)
+bootstrap = do(10000) * lm(ap ~ price + role + price:role + im, data = resample(data %>% filter(influential == FALSE)))
+bootstrap.small = (do(6) * lm(ap ~ price + role + price:role + im, data = resample(data %>% filter(influential == FALSE)))) %>% mutate(.index = str_c("Stichprobe ", .index))
+```
+
+Zur Durchführung von Hypothesentests machen wir Gebrauch vom Bootstrapping-Verfahren. Hierbei approximieren wir die theoretische Stichprobenverteilung der jeweiligen Regressionsparameter durch die Bootstrap-Verteilung, sodass wir in der Lage sind, Konfidenzintervalle (und auch Standardfehler) zu bestimmen. Wie unterschiedlich die Regressionsparameter je nach Stichprobe ausfallen können, ist in Abbildung \@ref(fig:bootstrap-samples) dargestellt.
+
+```{r bootstrap-samples, fig.align = "center", fig.cap = "Unterschiedliche Stichproben führen zu unterschiedlichen Regressionsmodellen, die sich jeweils in ihren Regressionsparametern (stellenweise nur marginal) unterscheiden."}
+ggplot() +
+  geom_jitter(data = data, aes(x = price, y = ap, color = role), alpha = 0.2) +
+  geom_abline(data = bootstrap.small, aes(intercept = Intercept, slope = price, color = "Geschenkgeber")) +
+  geom_abline(data = bootstrap.small, aes(intercept = Intercept + roleGeschenknehmer, slope = price + price.roleGeschenknehmer, color = "Geschenknehmer")) +
+  facet_wrap(~ .index, ncol = 3) +
+  scale_x_continuous(labels = label_number(suffix = "€", big.mark = ".", decimal.mark = ","), name = "Geschenkpreis") +
+  labs(y = "Wertschätzungsgrad", color = NULL) +
+  theme_ipsum_rc(plot_margin = margin(0, 0, 0, 0)) +
+  theme(legend.position = "bottom")
+```
+
+#### Beispielhypothese 1
+
+```{r bootstrap-h1}
+bootstrap.h1.quantiles = quantile(~ roleGeschenknehmer, data = bootstrap, probs = c(0, 0.025, 0.05, 0.5, 0.95, 0.975, 1))
+```
+
+Liegt die Vermutung nahe, dass der duchschnittliche Wertschätzungsgrad in der Gruppe der Geschenknehmer im Vergleich zur Gruppe der Geschenkgeber unterschiedlich ist, muss $\beta_2 \neq 0$ sein, woraus sich das nachfolgende Hypothesenpaar ergibt:
+
+$$H_0: \beta_2 = 0 \qquad H_A: \beta_2 \neq 0$$
+
+Aus der über die Bootstrap-Verteilung approximierte Stichprobenverteilung von $\beta_2$ ergeben sich auszugsweise die in Tabelle \@ref(tab:bootstrap-h1-quantiles) dargestellten Quantile.
+
+```{r bootstrap-h1-quantiles}
+knitr::kable(t(bootstrap.h1.quantiles), caption = "Auszugsweise Darstellung der Quantile der Bootstrap-Verteilung $\\beta_2$.")
+```
+
+In Tabelle \@ref(tab:bootstrap-h1-quantiles) zeigt sich, dass erwartungsgemäß das 50\%-Quantil (Median) der Bootstrap-Verteilung annäherend dem $\hat{\beta}_2$ der Ausgangsstichprobe entspricht. Abbildung \@ref(fig:bootstrap-h1-viz) stellt die Bootstrap-Verteilung von $\beta_2$ grafisch dar und markiert darüber hinaus auch die Lage des in der Nullhypothese angenommenen Werts für $\beta_2$ $(=0)$ sowie das Konfidenzintervall.
+
+```{r bootstrap-h1-viz, fig.align = "center", fig.cap = "Bootstrap-Verteilung von $\\beta_2$ inklusive Konfidenzintervall und Lage des in der Nullhypothese angenommenen Wertes für $\\beta_2$ $(= 0)$."}
+ggplot() +
+  geom_histogram(data = bootstrap, aes(x = roleGeschenknehmer), bins = 30) +
+  geom_vline(aes(xintercept = 0, color = "Nullhypothese"), linetype = "dashed") +
+  geom_vline(aes(xintercept = bootstrap.h1.quantiles["2.5%"], color = "2.5%-Quantil"), linetype = "dashed") +
+  geom_vline(aes(xintercept = bootstrap.h1.quantiles["97.5%"], color = "97.5%-Quantil"), linetype = "dashed") +
+  geom_rect(aes(xmin = bootstrap.h1.quantiles["2.5%"], xmax = bootstrap.h1.quantiles["97.5%"], ymin = -Inf, ymax = Inf, fill = "Konfidenzintervall"), alpha = 0.1) +
+  labs(x = expression(beta[2]), y = "Häufigkeit") +
+  scale_color_manual(name = NULL, values = c(Nullhypothese = "red", "2.5%-Quantil" = "black", "97.5%-Quantil" = "black")) +
+  scale_fill_manual(name = NULL, values = c(Konfidenzintervall = "green")) +
+  theme_ipsum_rc(plot_margin = margin(10, 10, 0, 0)) +
+  theme(legend.position = "bottom")
+```
+
+In einer Bootstrap-Verteilung liegt bei einem zweiseitigen Hypothesentest und einem Signifikanzniveau in Höhe von 5\% das Konfidenzintervall zwischen dem 2.5\%- und 97.5\%-Quantil. Demnach liegt das tatsächliche $\beta_2$ in der Population mit einer Wahrscheinlichkeit von 95\% zwischen `r bootstrap.h1.quantiles["2.5%"]` und `r bootstrap.h1.quantiles["97.5%"]`. Da der in der Nullhypothese angenommene Wert für $\beta_2$ $(=0)$ nicht innerhalb dieses Konfidenzintervalls zwischen `r bootstrap.h1.quantiles["2.5%"]` und `r bootstrap.h1.quantiles["97.5%"]` liegt, ist es unwahrscheinlich, dass $\beta_2 = 0$ für die Population gilt. Demnach ist die Nullhypothese abzulehnen. Der durchschnittliche Grad der Wertschätzung ist für Geschenkgeber und Geschenknehmer signifikant unterschiedlich.
+
+#### Beispielhypothese 2
+
+```{r bootstrap-h2}
+bootstrap.h2.quantiles = quantile(~ price.roleGeschenknehmer, data = bootstrap, probs = c(0, 0.025, 0.05, 0.5, 0.95, 0.975, 1))
+```
+
+Liegt die Vermutung nahe, dass der Wertschätzungsgrad in der Gruppe der Geschenknehmer durchschnittlich weniger stark vom Geschenkpreis beeinflusst wird als in der Gruppe der Geschenkgeber, muss $\beta_3 < 0$ sein, woraus sich das nachfolgende Hypothesenpaar ergibt:
+
+$$H_0: \beta_3 \ge 0 \qquad H_A: \beta_3 < 0$$
+
+Aus der über die Bootstrap-Verteilung approximierte Stichprobenverteilung von $\beta_3$ ergeben sich auszugsweise die in Tabelle \@ref(tab:bootstrap-h2-quantiles) dargestellten Quantile.
+
+```{r bootstrap-h2-quantiles}
+knitr::kable(t(bootstrap.h2.quantiles), caption = "Auszugsweise Darstellung der Quantile der Bootstrap-Verteilung $\\beta_3$.")
+```
+
+In Tabelle \@ref(tab:bootstrap-h2-quantiles) zeigt sich, dass erwartungsgemäß das 50\%-Quantil (Median) der Bootstrap-Verteilung annäherend dem $\hat{\beta}_3$ der Ausgangsstichprobe entspricht. Abbildung \@ref(fig:bootstrap-h2-viz) stellt die Bootstrap-Verteilung von $\beta_3$ grafisch dar und markiert darüber hinaus auch die Lage des in der Nullhypothese angenommenen Werts für $\beta_3$ $(\ge 0)$ sowie das Konfidenzintervall.
+
+```{r bootstrap-h2-viz, fig.align = "center", fig.cap = "Stichprobenverteilung hinsichtlich $\\beta_3$ approximiert über die Bootstrap-Simulation."}
+ggplot() +
+  geom_histogram(data = bootstrap, aes(x = price.roleGeschenknehmer), bins = 30) +
+  geom_vline(aes(xintercept = 0, color = "Nullhypothese"), linetype = "dashed") +
+  geom_vline(aes(xintercept = bootstrap.h2.quantiles["0%"], color = "0%-Quantil"), linetype = "dashed") +
+  geom_vline(aes(xintercept = bootstrap.h2.quantiles["95%"], color = "95%-Quantil"), linetype = "dashed") +
+  geom_rect(aes(xmin = bootstrap.h2.quantiles["0%"], xmax = bootstrap.h2.quantiles["95%"], ymin = -Inf, ymax = Inf, fill = "Konfidenzintervall"), alpha = 0.1) +
+  labs(x = expression(beta[3]), y = "Häufigkeit") +
+  scale_color_manual(name = NULL, values = c(Nullhypothese = "red", "0%-Quantil" = "black", "95%-Quantil" = "black")) +
+  scale_fill_manual(name = NULL, values = c(Konfidenzintervall = "green")) +
+  theme_ipsum_rc(plot_margin = margin(10, 10, 0, 0)) +
+  theme(legend.position = "bottom")
+```
+
+In einer Bootstrap-Verteilung liegt bei einem linksseitigem Hypothesentest und einem Signifikanzniveau in Höhe von 5\% das Konfidenzintervall zwischen dem 0\%- und 95\%-Quantil. Demnach liegt das tatsächliche $\beta_3$ in der Population mit einer Wahrscheinlichkeit von 95\% zwischen `r bootstrap.h2.quantiles["0%"]` und `r format(bootstrap.h2.quantiles["95%"], scientific = FALSE, digits = 4)`. Da der in der Nullhypothese angenommene Wert für $\beta_3$ $(\ge 0)$ nicht innerhalb dieses Konfidenzintervalls zwischen `r bootstrap.h2.quantiles["0%"]` und `r format(bootstrap.h2.quantiles["95%"], scientific = FALSE, digits = 4)` liegt, ist es unwahrscheinlich, dass $\beta_3 \ge 0$ für die Population gilt. Demnach ist die Nullhypothese abzulehnen. Der Einfluss des Geschenkpreises auf den durchschnittlichen Wertschätzungsgrad ist bei Geschenknehmer signifikant geringer als bei der Gruppe der Geschenkgeber.

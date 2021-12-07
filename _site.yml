@@ -1,0 +1,27 @@
+name: "website"
+title: "Quantitative Datenanalyse"
+description: |
+  Quantitative Datenanalyse
+base_url: https://github.com/saschaschworm/quantitative-datenanalyse
+repository_url: https://github.com/saschaschworm/quantitative-datenanalyse
+creative_commons: CC BY
+output_dir: "docs"
+navbar:
+  source_url: true
+  search: false
+  right:
+    - text: "Home"
+      href: index.html
+    - text: "Weihnachtsexperiment"
+      href: christmas-experiment.html
+    - icon: fa fa-rss
+      href: index.xml
+collections:
+  posts:
+    disqus: quantitative-datenanalyse
+    share: [twitter, linkedin]
+output:
+  distill::distill_article:
+    highlight: rstudio
+    toc: true
+    theme: theme.css
