@@ -12,8 +12,12 @@ navbar:
   right:
     - text: "Home"
       href: index.html
-    - text: "Weihnachtsexperiment"
-      href: christmas-experiment.html
+    - text: "Unterlagen"
+      menu:
+        - text: "Kurzreferenz zur quantitativen Datenanalyse"
+          href: reference.html
+        - text: "Ergebnisse des Weihnachtsexperiments"
+          href: christmas-experiment.html
     - icon: fa fa-rss
       href: index.xml
 collections:
