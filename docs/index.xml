@@ -2,11 +2,24 @@
 <rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
   <channel>
     <title>Quantitative Datenanalyse</title>
-    <link>https://github.com/saschaschworm/quantitative-datenanalyse</link>
-    <atom:link href="https://github.com/saschaschworm/quantitative-datenanalyse/index.xml" rel="self" type="application/rss+xml"/>
+    <link>https:/saschaschworm.github.io/quantitative-datenanalyse</link>
+    <atom:link href="https:/saschaschworm.github.io/quantitative-datenanalyse/index.xml" rel="self" type="application/rss+xml"/>
     <description>Quantitative Datenanalyse
 </description>
     <generator>Distill</generator>
     <lastBuildDate>Wed, 08 Dec 2021 00:00:00 +0000</lastBuildDate>
+    <item>
+      <title>Stichprobenverteilung, Bootstrapping und Nullverteilung</title>
+      <dc:creator>Sascha Schworm</dc:creator>
+      <link>https:/saschaschworm.github.io/quantitative-datenanalyse/posts/2021-12-08-stichprobenverteilung-bootstrapping-und-nullverteilung</link>
+      <description>In diesem Beitrag soll anhand eines illustrativen Beispiels erläutert werden, was es mit einer Stichprobenverteilung eigentlich auf sich hat und wie uns die simulationsbasierte Inferenz mittels Bootstrap- und Nullverteilung dabei hilft, statistische Hypothesen auf einfachste Art und Weise zu überprüfen.</description>
+      <category>Simulationsbasierte Inferenz</category>
+      <category>Stichprobenverteilung</category>
+      <category>Bootstrap-Verteilung</category>
+      <category>Nullverteilung</category>
+      <guid>https:/saschaschworm.github.io/quantitative-datenanalyse/posts/2021-12-08-stichprobenverteilung-bootstrapping-und-nullverteilung</guid>
+      <pubDate>Wed, 08 Dec 2021 00:00:00 +0000</pubDate>
+      <media:content url="https:/saschaschworm.github.io/quantitative-datenanalyse/posts/2021-12-08-stichprobenverteilung-bootstrapping-und-nullverteilung/stichprobenverteilung-bootstrapping-und-nullverteilung_files/figure-html5/sampling-distribution-plot-1.png" medium="image" type="image/png" width="1248" height="768"/>
+    </item>
   </channel>
 </rss>

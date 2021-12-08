@@ -1,0 +1,160 @@
+---
+title: "Stichprobenverteilung, Bootstrapping und Nullverteilung"
+description: |
+  In diesem Beitrag soll anhand eines illustrativen Beispiels erläutert werden, was es mit einer Stichprobenverteilung eigentlich auf sich hat und wie uns die simulationsbasierte Inferenz mittels Bootstrap- und Nullverteilung dabei hilft, statistische Hypothesen auf einfachste Art und Weise zu überprüfen.
+author:
+  - name: "Sascha Schworm"
+    url: https://www.saschaschworm.de
+    affiliation: Bergische Universität Wuppertal
+    affiliation_url: https://www.uni-wuppertal.de
+date: 2021-12-08
+categories:
+  - Simulationsbasierte Inferenz
+  - Stichprobenverteilung
+  - Bootstrap-Verteilung
+  - Nullverteilung
+output:
+  distill::distill_article:
+    self_contained: false
+---
+
+
+```{r setup, include = FALSE}
+base::set.seed(1909)
+
+knitr::opts_chunk$set(echo = FALSE)
+knitr::knit_hooks$set(inline = function(x) prettyNum(round(x, 4), big.mark = ".", decimal.mark = ","))
+
+base::library(mosaic)
+base::library(hrbrthemes)
+base::library(scales)
+```
+
+```{r setup-data, include = FALSE}
+population = rep(c("u", "v"), c(14600, 131400))
+population.proportion = prop(~ population, success = "v", format = "percent")
+sample.size = 102000; population.size = length(population)
+sample = sample(population, size = 1000)
+sample.proportion = 90.0
+```
+
+## Einleitung
+
+Auf eine Umfrage von Schulministerin Gebauer anlässlich der Bewertung der Corona-Lage an den Schulen in Nordrhein-Westfalen, haben `r sample.size` (**Gelgenheitsstichprobe**) von insgesamt `r population.size` Lehrerinnen und Lehrer (**Population**) reagiert. Demnach sind rund `r sample.proportion`\% $(= p = \hat \pi)$ aller Befragten bereits vollständig geimpft. Dies hört sich zwar nach einer präzisen Schätzung für den Anteil vollständig geimpfter Lehrerinnen und Lehrer in Nordrhein-Westfalen - also in der gesamten Population - an, aber wir würden gerne wissen, wie genau diese Schätzung tatsächlich ist.
+
+> Der aus der Stichprobe ermittelte Schätzer ist natürlich nicht erwartungstreu bezüglich des zu schätzenden Populationsparameters. Überlegen Sie sich an der Stelle mal, welche Verzerrungen innerhalb der Stichprobe hier vorliegen könnten. Worst-Case-Szenario: Innerhalb der Stichprobe beträgt der Anteil geimpfter Lehrerinnen und Lehrer absolut `r sample.size * sample.proportion / 100`. Im Bezug auf die Population (und bei Annahme, dass alle anderen Lehrerinnen und Lehrer nicht vollständig geimpft sind) sind das gerade mal `r ((population.size / (sample.size * sample.proportion / 100)) - 1) * 100`\%. Hier zeigt sich deutlich die Gefährlichkeit nicht-probabilistischer Stichproben - selbst bei einem großen Stichprobenumfang.
+
+## Stichprobenverteilung
+
+```{r sampling-distribution, include = FALSE, cache = TRUE}
+sampling.distribution = do(10000) * prop(~ sample(population, size = 1000), success = "v")
+sampling.distribution.mean = mean(~ prop_v, data = sampling.distribution)
+sampling.distribution.se = sd(~ prop_v, data = sampling.distribution)
+sampling.distribution.ci.lower = sample.proportion - 1.96 * sampling.distribution.se * 100
+sampling.distribution.ci.upper = sample.proportion + 1.96 * sampling.distribution.se * 100
+```
+
+Gehen wir nun mal davon aus, dass die Gelegenheitsstichprobe eine echte Zufallsstichprobe ist, wir aus der Population alle möglichen Zufallsstichproben der Größe `r sample.size` ziehen können und der tatsächliche Anteil geimpfter Lehrerinnen und Lehrer in der Population `r population.proportion`\% beträgt. **Das ist natürlich unrealistisch und es erfordet - da die Population bekannt ist - eigentlich keinerlei Inferenzstatistik. Diese Annahme soll nur ein illustrativer Zwischenschritt sein.**
+
+Für jede dieser Stichproben berechnen wir dann eine Statistik (z.B. Mittelwert, Standardabweichung, Median, …) - in diesem Fall also den Anteil vollständig geimpfter Lehrerinnen und Lehrer. Die Verteilungsfunktion dieser Statistik ist die **Stichprobenverteilung**, die uns die Wahrscheinlichkeit angibt, mit der jeder mögliche Wert einer Statistik zufällig aus einer Population gezogen werden kann.
+
+```{r sampling-distribution-plot, echo = FALSE, fig.align = "center", fig.cap = "Histogramm und Wahrscheinlichkeitsdichte der theoretischen Stichprobenverteilung über den Anteil vollständig geimpfter Lehrerinnen und Lehrer."}
+sampling.plot.binwidth = 0.005; sampling.plot.center = 0.9
+
+ggplot(data = sampling.distribution, aes(x = prop_v)) +
+  geom_histogram(aes(y = ..density..), colour="black", fill="white", binwidth = sampling.plot.binwidth, center = sampling.plot.center) +
+  geom_density() +
+  scale_x_continuous(breaks = c(seq(sampling.plot.center - sampling.plot.binwidth / 2, 0, by = -sampling.plot.binwidth), seq(sampling.plot.center + sampling.plot.binwidth / 2, 1, by = sampling.plot.binwidth)), minor_breaks = c(), labels = scales::percent, guide = guide_axis(angle = 45)) +
+  labs(x = "Anteil vollständig geimpfter Lehrerinnen und Lehrer", y = "Wahrscheinlichkeitsdichte") +
+  theme_ipsum_rc(plot_margin = margin(0, 0, 0, 0)) +
+  theme(legend.position = "bottom") 
+```
+
+Der Stichprobenverteilung können wir entnehmen, dass wenn man eine Stichprobe mit `r sample.size` zufällig ausgewählten Lehrerinnen und Lehrer aus der Population ziehen würde, die Wahrscheinlichkeit, dass in einer solchen Zufallsstichprobe der Anteil vollständig geimpfter Lehrerinnen und Lehrer zwischen `r (sampling.plot.center - sampling.plot.binwidth / 2) * 100`\% und `r (sampling.plot.center + sampling.plot.binwidth / 2) * 100`\% liegt, am größten ist. Auch unsere Stichprobe, wo der Anteil vollständig geimpfter Lehrerinnen und Lehrer bei `r sample.proportion`\% liegt, ist eine konkrete Realisation dieser Stichprobenverteilung. 
+
+Um nun zu beurteilen, wie weit diese auf der Stichprobe basierenden Schätzung durchschnittlich vom wahren Parameter der Population ($\pi$) abweicht - also dem tatsächlichem Anteil vollständig geimpfter Lehrerinnen und Lehrer in der Population, benötigen wir den **Standardfehler**, den wir über die **Standardabweichung** der Statistik auf Basis der Stichprobenverteilung bestimmen können. Diese gibt an, wie sich eine Statistik von Stichprobe zur Stichprobe unterscheidet - in diesem Fall also wie sehr sich der Anteil vollständig geimpfter Lehrerinnen und Lehrer von Stichprobe zu Stichprobe durchschnittlich unterscheidet. 
+
+Hier beträgt der Standardfehler rund `r sampling.distribution.se * 100` Prozentpunkte - im Schnitt weicht also der über eine Stichprobe geschätzte Anteil vollständig geimpfter Lehrerinnen und Lehrer in der Population um `r sampling.distribution.se * 100` Prozentpunkte vom tatsächlichen Parameter der Population ab. Auf Basis des Standardfehlers können wir also **Konfidenzintervalle** bilden. Für unsere Stichprobe gilt, dass mit einer Wahrscheinlichkeit von 95\% der Anteil vollständig geimpfter Lehrerinnen und Lehrer in der Population zwischen `r sampling.distribution.ci.lower`\% und `r sampling.distribution.ci.upper`\% liegt ($p \pm 1.96 \cdot \operatorname*{SE}$). Da die Quantile der Stichprobenverteilung bekannt sind, lässt sich das mittlere 95\%-Konfidenzintervall auch darüber bestimmen:
+
+```{r sampling-distribution-quantiles, echo = FALSE}
+knitr::kable(t(quantile(~ prop_v, data = sampling.distribution, probs = c(0.025, 0.25, 0.5, 0.75, 0.975))), caption = "Auszugsweise Darstellung der Quantile der theoretischen Stichprobenverteilung.", format.args = list(nsmall = 4))
+```
+
+## Bootstrap-Verteilung
+
+```{r bootstrap-distribution, include = FALSE, cache = TRUE}
+bootstrap.distribution = do(10000) * prop(~ resample(sample), success = "v")
+bootstrap.distribution.mean = mean(~ prop_v, data = bootstrap.distribution)
+bootstrap.distribution.se = sd(~ prop_v, data = bootstrap.distribution)
+bootstrap.distribution.ci.lower = sample.proportion - 1.96 * bootstrap.distribution.se * 100
+bootstrap.distribution.ci.upper = sample.proportion + 1.96 * bootstrap.distribution.se * 100
+```
+
+In der Praxis kosten Stichproben aber Ressourcen (Zeit, Geld etc.), weswegen das Ziehen von sehr vielen Stichproben mit einem gegebenen Umfang indiskutabel ist. In der Regel ist bei statistischen Untersuchungen auch die Population nicht verfügbar, sondern man hat nur eine Stichprobe, d.h. Umfang der Population, Populationsparameter und der Standardfehler sind unbekannt. Allerdings ist es möglich die Verteilung von Stichprobenstatistiken (Stichprobenverteilung) durch die **Verteilung von Bootstrap-Stichproben** (Bootstrap-Verteilung) zu approximieren. Diese Approximation ist umso besser, je mehr die vorliegende Stichprobe der Population ähnelt.
+
+```{r bootstrap-distribution-plot, echo = FALSE, fig.align = "center", fig.cap = "Histogramm und Wahrscheinlichkeitsdichte der über die Bootstrap-Simulation approximierten Stichprobenverteilung über den Anteil vollständig geimpfter Lehrerinnen und Lehrer."}
+bootstrap.plot.binwidth = 0.005; bootstrap.plot.center = 0.906
+
+ggplot(data = bootstrap.distribution, aes(x = prop_v)) +
+  geom_histogram(aes(y = ..density..), colour="black", fill="white", binwidth = bootstrap.plot.binwidth, center = bootstrap.plot.center) +
+  geom_density() +
+  scale_x_continuous(breaks = c(seq(bootstrap.plot.center - bootstrap.plot.binwidth / 2, 0, by = -bootstrap.plot.binwidth), seq(bootstrap.plot.center + bootstrap.plot.binwidth / 2, 1, by = bootstrap.plot.binwidth)), minor_breaks = c(), labels = scales::percent, guide = guide_axis(angle = 45)) +
+  labs(x = "Anteil vollständig geimpfter Lehrerinnen und Lehrer", y = "Wahrscheinlichkeitsdichte") +
+  theme_ipsum_rc(plot_margin = margin(0, 0, 0, 0)) +
+  theme(legend.position = "bottom") 
+```
+
+Über die Bootstrap-Verteilung lässt sich der Standardfehler, welcher den tatsächlichen Standardfehler der Stichprobenverteilung approximiert, bestimmen. Wohlbemerkt war hierfür nur eine einzige Stichprobe notwendig. Das ermöglicht uns das Bootstrapping. Der hier über das Bootstrapping appproximierte Standardfehler beträgt rund `r bootstrap.distribution.se * 100` Prozentpunkte - im Schnitt weicht also der über eine Stichprobe geschätzte Anteil vollständig geimpfter Lehrerinnen und Lehrer in der Population um `r bootstrap.distribution.se * 100` Prozentpunkte vom tatsächlichen Parameter der Population ab. Auf Basis des Standardfehlers können wir wiederum **Konfidenzintervalle** bilden.
+
+### Hypothesentest auf Basis der Bootstrap-Verteilung
+
+Für unsere Stichprobe gilt näherungsweise, dass mit einer Wahrscheinlichkeit von 95\% der Anteil vollständig geimpfter Lehrerinnen und Lehrer in der Population zwischen `r bootstrap.distribution.ci.lower`\% und `r bootstrap.distribution.ci.upper`\% liegt ($p \pm 1.96 \cdot \operatorname*{SE}$). Da die Quantile der Stichprobenverteilung bekannt sind, lässt sich das mittlere 95\%-Konfidenzintervall auch darüber bestimmen:
+
+```{r bootstrap-distribution-quantiles, echo = FALSE}
+bootstrap.quantiles = quantile(~ prop_v, data = bootstrap.distribution, probs = c(0.025, 0.25, 0.5, 0.75, 0.975))
+knitr::kable(t(bootstrap.quantiles), caption = "Auszugsweise Darstellung der Quantile der über die Bootstrap-Simulation approximierten Stichprobenverteilung.", format.args = list(nsmall = 4))
+```
+
+Demnach liegt der Anteil vollständig geimpfter Lehrerinnen und Lehrer in der Population mit einer Wahrscheinlichkeit von 95\% zwischen `r bootstrap.quantiles["2.5%"] * 100`\% und `r bootstrap.quantiles["97.5%"] * 100`\%. Die Differenz zwischen diesem Konfidenzintervall und dem Konfidenzintervall, welches über den Standardfehlers ermittelt wurde, kommt dadruch zustande, weil es sich in der vorliegenden Bootstrap-Verteilung nicht exakt um eine Normalverteilung handelt.
+
+Stellt nun jemand die Behauptung auf, dass der Anteil geimpfter Lehrerinnen und Lehrer in der Population bei 94\% ($H_0: \pi = 94\% = 0.94$) liegt und wir daran nicht glauben ($H_A: \pi \ne 0.94$), können wir mit Hilfe unseres über die Quantile der Bootstrap-Verteilung ermittelten mittleren 95\%-Konfidenzintervalls argumentieren: Da die mittleren 95\% aller aus der Population ziehbaren Stichproben zwischen `r bootstrap.quantiles["2.5%"] * 100`\% und `r bootstrap.quantiles["97.5%"] * 100`\% liegen bzw. weil der Anteil vollständig geimpfter Lehrerinnen und Lehrer in der Population mit einer Wahrscheinlichkeit von 95\% zwischen `r bootstrap.quantiles["2.5%"] * 100`\% und `r bootstrap.quantiles["97.5%"] * 100`\% liegt, halten wir es für unwahrscheinlich, dass der wahre Anteil in der Population bei 94\% liegt, weil sich andernfalls auch andere Stichproben ergeben hätten. Wir lehnen die Nullhypothese demnach ab. Die Wahrscheinlichkeit, dass wir uns hierbei irren (und demnach in der Population der Anteil tatsächlich 94\% beträgt), liegt bei 5\% (**$\alpha$, Signifikanzniveau, Irrtumswahrscheinlichkeit**).
+
+## Nullverteilung
+
+```{r null-distribution, include = FALSE, cache = TRUE}
+null.distribution = do(10000) * rflip(n=sample.size, prob=0.94)
+null.distribution.mean = mean(~ prop, data = null.distribution)
+null.distribution.se = sd(~ prop, data = null.distribution)
+null.distribution.ci.lower = 0.94 - 1.96 * null.distribution * 100
+null.distribution.ci.upper = 0.94 + 1.96 * null.distribution * 100
+```
+
+Mit Hilfe der Bootstrap-Simulation approximieren wir die theoretische Verteilung von Stichprobenstatistiken (Stichprobenverteilung) so, wie sie sich real ergeben, wenn man (unendlich oft) Stichproben aus der Population ziehen würde. Eine Alternative hierzu stellt die **Nullverteilung** dar. Auch sie ist eine Stichprobenverteilung, allerdings liegt ihr die Annahme zugrunde, **wie sich Stichproben (und demnach Stichprobenstatistiken) der Größe $n$ ergeben würden, wenn in der Population ein bestimmter Parameter gilt**. In unserem Fall könnte man also in Anlehnung an der vorherigen Hypothesentest die Frage stellen, wie sich Stichproben der Größe `r sample.size` ergeben würden, wenn der Anteil vollständig geimpfter Lehrerinnen und Lehrer in der Population bei 94\% ($H_0: \pi = 94\% = 0.94$, daher Nullverteilung) liegt. Hierzu müssen also gemäß dieser Voraussetzung Daten generiert werden, was in diesem konkreten Fall durch die Simulation von Münzwürfen realisiert werden kann.
+
+```{r null-distribution-plot, echo = FALSE, fig.align = "center", fig.cap = "Histogramm und Wahrscheinlichkeitsdichte der über die Simulation generierten Nullverteilung über den Anteil vollständig geimpfter Lehrerinnen und Lehrer."}
+null.plot.binwidth = 0.0005; null.plot.center = 0.94
+
+ggplot(data = null.distribution, aes(x = prop)) +
+  geom_histogram(aes(y = ..density..), colour="black", fill="white", binwidth = null.plot.binwidth, center = null.plot.center) +
+  geom_density() +
+  scale_x_continuous(breaks = c(seq(null.plot.center - null.plot.binwidth / 2, 0, by = -null.plot.binwidth), seq(null.plot.center + null.plot.binwidth / 2, 1, by = null.plot.binwidth)), minor_breaks = c(), labels = scales::percent, guide = guide_axis(angle = 45)) +
+  labs(x = "Anteil vollständig geimpfter Lehrerinnen und Lehrer", y = "Wahrscheinlichkeitsdichte") +
+  theme_ipsum_rc(plot_margin = margin(0, 0, 0, 0)) +
+  theme(legend.position = "bottom") 
+```
+
+Der Nullverteilung (resp. Stichprobenverteilung) können wir entnehmen, dass wenn man eine Stichprobe mit `r sample.size` zufällig ausgewählten Lehrerinnen und Lehrer aus einer Population zieht, wo der Anteil vollständig geimpfter Lehrerinnen und Lehrer bei 94\% liegt, die Wahrscheinlichkeit, dass in einer solchen Zufallsstichprobe der Anteil vollständig geimpfter Lehrerinnen und Lehrer zwischen `r (null.plot.center - null.plot.binwidth / 2) * 100`\% und `r (null.plot.center + null.plot.binwidth / 2) * 100`\% liegt, am größten ist.
+
+### Hypothesentest auf Basis der Nullverteilung
+
+Da die Quantile der Nullverteilung bekannt sind, lässt sich das mittlere 95\%-Konfidenzintervall auch darüber bestimmen:
+
+```{r null-distribution-quantiles, echo = FALSE}
+null.quantiles = quantile(~ prop, data = null.distribution, probs = c(0.025, 0.25, 0.5, 0.75, 0.975)); knitr::kable(t(null.quantiles), caption = "Auszugsweise Darstellung der Quantile der über die Simulation generierten Nullverteilung.", format.args = list(nsmall = 4))
+```
+
+Da die mittleren 95\% aller in einer solchen Population ziehbaren Stichproben zwischen `r null.quantiles["2.5%"] * 100`\% und `r null.quantiles["97.5%"] * 100`\% liegen, halten wir es für unwahrscheinlich, dass wir eine reale empirische Stichprobe, wo der Anteil vollständig geimpfter Lehrerinnen und Lehrer bei 90\% liegt, aus einer solchen Population ziehen würden. Demnach lehnen wir die Nullhypothese ($H_0: \pi = 94\% = 0.94$), die der Simulation zugrunde liegt, ab.
+
+Über die Nullverteilung lässt sich auch bestimmen, wie wahrscheinlich es ist, die empirisch gemessene Stichprobenstatistik (in unserem Fall 90\%) und extremere Werte zu erhalten, wenn die Nullhypothese tatsächlich stimmen würde. Diesen Wert bezeichnet man auch als **p-Wert (Überschreitungswahrscheinlichkeit)** und ist die Randwahrscheinlichkeit einer Teststatistik unter der Nullhypothese.
+
+In unserem Fall liegt dieser Wert praktisch bei 0\%. Das bedeutet, dass die Wahrscheinlichkeit, eine Stichprobe, wo der Anteil vollständig geimpfter Lehrerinnen und Lehrer bei 90\% liegt, aus einer Population, wo der Anteil vollständig geimpfter Lehrerinnen und Lehrer bei 94\% liegen soll, bei 0\% liegt. Auch deswegen kommen wir hier zum Ergebnis, dass in der Population der Anteil nicht bei 94\% liegen kann und wir demnach die Nullhypothese ablehnen.

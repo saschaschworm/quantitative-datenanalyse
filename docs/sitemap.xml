@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd" version="1.0">
   <url>
-    <loc>https://github.com/saschaschworm/quantitative-datenanalyse/christmas-experiment.html</loc>
+    <loc>https:/saschaschworm.github.io/quantitative-datenanalyse/christmas-experiment.html</loc>
     <lastmod>2021-12-07T17:57:29+01:00</lastmod>
   </url>
   <url>
-    <loc>https://github.com/saschaschworm/quantitative-datenanalyse/</loc>
+    <loc>https:/saschaschworm.github.io/quantitative-datenanalyse/</loc>
     <lastmod>2021-12-07T12:10:04+01:00</lastmod>
   </url>
   <url>
-    <loc>https://github.com/saschaschworm/quantitative-datenanalyse/reference.html</loc>
+    <loc>https:/saschaschworm.github.io/quantitative-datenanalyse/reference.html</loc>
     <lastmod>2021-12-08T16:05:08+01:00</lastmod>
+  </url>
+  <url>
+    <loc>https:/saschaschworm.github.io/quantitative-datenanalyse/posts/2021-12-08-stichprobenverteilung-bootstrapping-und-nullverteilung/</loc>
+    <lastmod>2021-12-08T18:03:45+01:00</lastmod>
   </url>
 </urlset>
