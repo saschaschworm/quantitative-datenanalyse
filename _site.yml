@@ -23,7 +23,13 @@ navbar:
 collections:
   posts:
     disqus: quantitative-datenanalyse
-    share: [twitter, linkedin]
+    share: [twitter, linkedin, facebook]
+google_analytics: "G-D3MC0XX3J9"
+cookie_consent:
+  style: interstitial
+  type: express
+  palette: light
+  lang: de
 output:
   distill::distill_article:
     highlight: rstudio
